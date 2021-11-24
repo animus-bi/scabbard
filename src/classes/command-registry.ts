@@ -1,6 +1,6 @@
 import columnify from "columnify";
 import { logger } from "../logger";
-import { Command } from "./command";
+import { Command } from "./commands";
 
 // todo: move to better place, so command and command-registry can use same definition
 const columnConfig = {
@@ -9,7 +9,7 @@ const columnConfig = {
   config: {
     description: { maxWidth: 80 },
     options: { maxWidth: 40, minWidth: 15 },
-    subcommands: { maxWidth: 40, minWidth: 15 }
+    positionals: { maxWidth: 40, minWidth: 15 }
   },
   preserveNewLines: true,
 }

@@ -9,7 +9,7 @@ const columnConfig = {
   config: {
     description: { maxWidth: 80 },
     options: { maxWidth: 40, minWidth: 15 },
-    subcommands: { maxWidth: 40, minWidth: 15 }
+    positionals: { maxWidth: 40, minWidth: 15 }
   },
   preserveNewLines: true,
 }
@@ -24,7 +24,6 @@ export abstract class Command {
 
   positionals: string[][] = [];
   options: string[][] = [];
-
   constructor(public argv) { }
 
   private _parsePositionals() {
@@ -33,9 +32,24 @@ export abstract class Command {
     });
   }
 
+  private _parseOptions() {
+    this.options.forEach((optsArr, i) => {
+      const opts = optsArr.slice(0, optsArr.length - 1);
+      if (opts.length === 2) {
+
+        if (this.argv[opts[0]]) {
+          this.argv[opts[1]] = this.argv[opts[0]];
+        } else if (this.argv[opts[1]]) {
+          this.argv[opts[0]] = this.argv[opts[1]];
+        }
+
+      }
+    });
+  }
+
   private _getUnsupportedPositionals(): string[] {
     const unsupportedPositionals = [];
-    const positionals = this.positionals;// this._positionals().concat(this.positionals || []);
+    const positionals = this.positionals;
     if (
       (
         this.argv._.length !== positionals.length &&
@@ -75,26 +89,29 @@ export abstract class Command {
 
   printErrors(errors: string[]): void {
     logger.error(
-      columnify([
+      `${columnify([
         {
           command: this.name,
           ['error(s)']: errors.join('\n')
         }
-      ], columnConfig)
+      ], columnConfig)}\n`
     )
   }
 
-  printHelp() {
+  printHelp(errors = []) {
+    if (errors.length) {
+      this.printErrors(errors);
+    }
     const concattedOptions = this.options.concat(this._globalOptions());
     const positionals = Command.GetOptionsOrPositionalsWithoutDescriptions(this.positionals);
     const options = Command.GetOptionsOrPositionalsWithoutDescriptions(concattedOptions);
 
-    logger.warn(`${this.description}\n\n - ${this.name} <subcommand> <options>\n`);
+    logger.warn(`${this.description}\n\n - ${this.name} <${this.positionals.map((p) => p[0]).join('> <')}> <options>\n`);
 
     logger.warn(
       `${columnify(positionals.map((pos) => {
         return {
-          subcommands: pos.opts.join(', '),
+          positionals: pos.opts.join(', '),
           '': pos.description
         }
       }), columnConfig)}\n`
@@ -108,8 +125,8 @@ export abstract class Command {
         }
       }), columnConfig)}\n`
     );
-    // logger.info(`THIS WAS HELP for the ${this.name} COMMAND`);
-    // logger.info(`TODO: format this better`);
+
+    process.exit();
   }
 
   runCommand() {
@@ -131,6 +148,7 @@ export abstract class Command {
     }
 
     this._parsePositionals();
+    this._parseOptions();
     this.run();
 
   }
@@ -145,12 +163,12 @@ export abstract class Command {
   }
 
   static GetGlobalOptions(commandName: string = '') {
-    const contextualHelp = `Shows contextual help for a given command or subcommand`;
-    const commandSpectificHelp = `Shows help for the ${commandName} command.`
+    const contextualHelp = `Shows help for a given command or subcommand`;
+    const commandSpectificHelp = `Shows help for the '${commandName}' command.`
     const helpDesc = commandName ? commandSpectificHelp : contextualHelp;
     return [
       [ 'logLevel', 'Sets log level.\n - Default: `info`.\n - Available options: silly, debug, log, info, warn, error' ],
-      [ 'h', 'help', helpDesc] 
+      [ 'h', 'help', helpDesc ] 
     ];
   }
 

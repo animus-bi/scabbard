@@ -1,0 +1,3 @@
+[submodule "src/pantry/k8s/grucloud"]
+	path = src/pantry/k8s/grucloud
+	url = https://github.com/grucloud/grucloud

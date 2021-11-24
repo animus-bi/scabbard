@@ -1,0 +1,174 @@
+# {
+#   group: '',
+#   user: ''
+#   profile: '',
+#   domain: ''
+#   subdomain: ''
+#   region: ''
+# }
+
+# TODO: break this into smaller templates 
+# - then coordinate them via recipes
+# (eg. user-and-group, subdomain, bucket, cluster-creation)
+
+#######################################################
+## user and group
+#######################################################
+set -x
+
+aws iam create-group --group-name <%=group %> --profile <%= profile %>
+
+aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonEC2FullAccess --group-name <%=group %> --profile <%= profile %>
+aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonRoute53FullAccess --group-name <%=group %> --profile <%= profile %>
+aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess --group-name <%=group %> --profile <%= profile %>
+aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/IAMFullAccess --group-name <%=group %> --profile <%= profile %>
+aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonVPCFullAccess --group-name <%=group %> --profile <%= profile %>
+aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonSQSFullAccess --group-name <%=group %> --profile <%= profile %>
+aws iam attach-group-policy --policy-arn arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess --group-name <%=group %> --profile <%= profile %>
+
+aws iam create-user --user-name <%=user %> --profile <%= profile %>
+
+aws iam add-user-to-group --user-name <%=user %> --group-name <%=group %> --profile <%= profile %>
+
+accessKey=$(aws iam create-access-key --user-name <%=user %> --profile <%= profile %>)
+accessKeyId=$(echo $accessKey | jq -r .AccessKey.AccessKeyId)
+secretAccessKey=$(echo $accessKey | jq -r .AccessKey.SecretAccessKey)
+
+accessKey=$(aws iam create-access-key --user-name <%=user %> --profile <%= profile %>)
+
+existingAccessKeyId=$(aws iam list-access-keys --user-name <%=user %> --profile <%= profile %> | jq -r .AccessKeyMetadata[0].AccessKeyId)
+if [[ -z $existingAccessKeyId ]]; then
+  accessKey=$(aws iam create-access-key --user-name <%=user %> --profile <%= profile %>)
+else
+  aws iam delete-access-key --user-name k8s --access-key-id $existingAccessKeyId --profile <%= profile %>
+  accessKey=$(aws iam create-access-key --user-name <%=user %> --profile <%= profile %>)
+fi
+
+accessKeyId=$(echo $accessKey | jq -r .AccessKey.AccessKeyId)
+secretAccessKey=$(echo $accessKey | jq -r .AccessKey.SecretAccessKey)
+
+echo "access key: ${accessKey}"
+accessKeyId=$(echo $accessKey | jq -r .AccessKey.AccessKeyId)
+secretAccessKey=$(echo $accessKey | jq -r .AccessKey.SecretAccessKey)
+
+echo "access key: $accessKeyId"
+echo "secret access key: $secretAccessKey"
+
+# aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID" --profile <%= profile %> 
+# aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" --profile <%= profile %> 
+# aws configure set output json --profile <%= profile %> 
+# aws configure set region "$AWS_DEFAULT_REGION" --profile <%= profile %> 
+
+export AWS_PROFILE=<%= profile %> 
+export AWS_ACCESS_KEY_ID=$(aws configure get aws_access_key_id --profile <%= profile %>)
+export AWS_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key --profile <%= profile %>)
+
+#######################################################
+## k8s subdomain
+#######################################################
+ID=$(uuidgen)
+
+echo "creating subdomain hosted zone"
+namespaces=$(
+  aws route53 create-hosted-zone \
+    --profile <%= profile %> \
+    --name <%= subdomain %>.<%= domain %> \
+    --caller-reference $ID | \
+      jq .DelegationSet.NameServers
+)
+
+echo "namespaces: $namespaces"
+
+parentZoneId=$(
+  aws route53 list-hosted-zones \
+    --profile <%= profile %> | \
+    jq -r '.HostedZones[] | select(.Name=="<%= subdomain %>.<%= domain %>.") | .Id'
+);
+
+echo "hosted zone id: $parentZoneId"
+fqdn="<%= subdomain %>.<%= domain %>"
+
+template='{ 
+  "Comment": "Create a subdomain NS record in the parent domain",
+  "Changes": [
+    {
+      "Action": "CREATE",
+      "ResourceRecordSet": {
+        "Name": "<%= subdomain %>.<%= domain %>",
+        "Type": "NS",
+        "TTL": 300,
+        "ResourceRecords": []
+      }
+    }
+  ]
+}';
+jsonNs='['
+for namespace in $(echo "${namespaces}" | jq -r '.[]'); do
+  jsonNs="${jsonNs}{\"Value\":\"${namespace}\"},"
+done
+jsonNs="${jsonNs%?}]"
+
+echo "ns array: $jsonNs"
+jqQuery=".Changes[0].ResourceRecordSet.ResourceRecords = ${jsonNs}"
+interpolatedTemplate=$(echo $template | jq -r "$jqQuery")
+
+echo "subdomain namespaces: $interpolatedTemplate";
+
+echo "updating subdomains"
+aws route53 change-resource-record-sets \
+  --profile <%= profile %> \
+  --hosted-zone-id $parentZoneId \
+  --change-batch "$interpolatedTemplate"
+
+echo "--------VALIDATING DNS---------"
+dig ns "$fqdn"
+
+#######################################################
+## cluster state storage
+#######################################################
+subDomName="<%= subdomain %>"
+domainName="<%= domain %>"
+hyphenedDomainName=$(echo "${domainName//./-}")
+bucketName="$subDomName-$hyphenedDomainName-state-store"
+
+echo "creating s3 state storage bucket"
+aws s3api create-bucket \
+  --profile <%= profile %> \
+  --bucket "$bucketName" \
+  --region <%= region %>;
+
+echo "enabling bucket versioning"
+aws s3api put-bucket-versioning \
+  --profile <%= profile %> \
+  --bucket "$bucketName" \
+  --versioning-configuration Status=Enabled;
+
+echo "enabling bucket encryption on state store bucket"
+aws s3api put-bucket-encryption \
+  --profile <%= profile %> \
+  --bucket "$bucketName" \
+  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+
+
+#######################################################
+## cluster creation
+#######################################################
+export NAME="$fqdn"
+export KOPS_STATE_STORE="s3://$bucketName"
+
+echo "creating k8s cluster"
+kops create cluster \
+  --zones="<%= region %>a" \
+  ${NAME}
+
+echo "updating cluster"
+kops update cluster ${NAME} --yes
+
+echo "validating cluster"
+kops validate cluster --wait 10m
+
+echo "listing cluster nodes"
+kubectl get nodes --profile <%= profile %>
+
+

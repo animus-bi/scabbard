@@ -1,10 +1,11 @@
 import columnify from "columnify";
-import { logger } from "../logger";
-import { Command } from './command';
+import { logger } from "../../logger";
+import { Command } from '../command';
+import { GenerateProjectRecipe } from '../recipes';
 
-export class GenerateCommand extends Command {
+export class GenerateProjectCommand extends Command {
   name = 'generate';
-  description = 'Generates a serverless project in the specified directory...';
+  description = 'Generates a project in the specified directory...';
   positionals = [
     [ 'directory', 'The directory to create the project in.\nMust use [-f, --force] to write to non-empty directory.\n' ]
   ];
@@ -18,11 +19,9 @@ export class GenerateCommand extends Command {
       process.exit();
     }
     
-    if (this.argv.directory === 'mydir') {
-      logger.warn('yeah')
-    }
-
-    logger.info('TO DO - write logic to do stuff here')
+    const projGen = new GenerateProjectRecipe(this);
+    projGen.bake();
+    
   };
 
 }

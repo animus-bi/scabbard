@@ -1,11 +1,16 @@
 {
-  "name": "@jerm-qstart/command",
-  "version": "0.0.1",
-  "description": "A thing that does a thing",
+  "name": "@animus-bi/scab",
+  "version": "0.0.2-e6d84754.0",
+  "description": "A CLI that scaffolds up projects of various kinds",
   "keywords": [
-    ""
+    "cli",
+    "scab",
+    "scabbard"
   ],
   "main": "dist/index.js",
+  "bin": {
+    "scab": "dist/index.js"
+  },
   "types": "dist/index.d.ts",
   "scripts": {
     "lint": "eslint './src/**/*.{js,ts,tsx}'",
@@ -16,6 +21,7 @@
     "prebuild": "npm run clean:dist",
     "build": "tsc --listFiles",
     "watch": "tsc -w",
+    "cdk": "cdk",
     "start": "ts-node src/index.ts",
     "amendCommit": "git add . -A && git commit --amend --no-edit",
     "version:branch": "npm version prerelease --preid $(git rev-parse --short=8 HEAD^) --no-git-tag",
@@ -31,14 +37,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jerm-qstart/command"
+    "url": "https://github.com/animus-bi/scabbard"
   },
   "author": {
     "name": "Jeremy Wells",
     "email": "jmw.jeremymwells@gmail.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/jerm-qstart/command#readme",
+  "homepage": "https://github.com/animus-bi/scabbard",
   "devDependencies": {
     "@types/chai": "^4.2.13",
     "@types/columnify": "^1.5.0",
@@ -65,10 +71,16 @@
     "dist/**/*"
   ],
   "dependencies": {
+    "@aws-cdk/aws-ec2": "^1.134.0",
+    "@aws-cdk/aws-iam": "^1.134.0",
+    "@aws-cdk/core": "^1.134.0",
     "@danmasta/interpolate": "0.0.8",
+    "aws-cdk": "^1.134.0",
     "columnify": "^1.5.4",
+    "gitget": "0.0.13",
     "lodash.clonedeep": "^4.5.0",
     "lodash.isequal": "^4.5.0",
+    "lodash.template": "^4.5.0",
     "minimist": "^1.2.5",
     "rxjs": "^6.6.3",
     "winston": "^3.3.3"
